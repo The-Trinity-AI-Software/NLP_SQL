@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CRM NLP-to-SQL Dashboard</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    header {
+      background: #003366;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px;
+    }
+    .section {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .full-width {
+      grid-column: span 2;
+    }
+    select, textarea, input[type="file"] {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #0057b8;
+      color: white;
+      border: none;
+      margin-top: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #003f7f;
+    }
+    pre, table {
+      background: #eef1f7;
+      padding: 10px;
+      border-radius: 5px;
+      width: 100%;
+      overflow-x: auto;
+    }
+    th, td {
+      padding: 8px;
+      border: 1px solid #ccc;
+    }
+  </style>
+  <script>
+    function onDatabaseSelect() {
+      const db = document.getElementById("database").value;
+      if (!db) return;
+
+      const confirmUpload = confirm("Do you want to upload or update CSV/XLSX files for this database?");
+      if (confirmUpload) {
+        document.getElementById("uploadFormSection").style.display = "block";
+        document.getElementById("showTablesBtn").style.display = "inline";
+      } else {
+        document.getElementById("uploadFormSection").style.display = "none";
+        document.getElementById("showTablesBtn").style.display = "inline";
+        showTables();
+      }
+    }
+
+    async function uploadFiles() {
+      let formData = new FormData(document.getElementById('uploadForm'));
+      document.getElementById('message').innerText = "📦 Loading...";
+      await fetch("/upload_files", { method: "POST", body: formData });
+      document.getElementById('message').innerText = "✅ Files loaded.";
+      document.getElementById('showTablesBtn').style.display = "inline";
+    }
+
+    async function showTables() {
+      const db = document.getElementById("database").value;
+      if (!db) {
+        alert("Please select a database.");
+        return;
+      }
+
+      try {
+        const response = await fetch(`/get_tables?db=${db}`);
+        if (!response.ok) throw new Error("Error fetching tables");
+
+        const tables = await response.json();
+        const tableDiv = document.getElementById("tables_list");
+
+        if (tables.length === 0) {
+          tableDiv.innerHTML = "<p><b>No tables found in this database.</b></p>";
+          return;
+        }
+
+        tableDiv.innerHTML = "<h4>📊 Tables:</h4><ul>";
+        tables.forEach(t =>
+          tableDiv.innerHTML += `<li><a href="#" onclick="showColumns('${t}'); return false;">${t}</a></li>`
+        );
+        tableDiv.innerHTML += "</ul>";
+      } catch (err) {
+        console.error("Error fetching tables:", err);
+        document.getElementById("tables_list").innerHTML = "<p>⚠️ Failed to load tables.</p>";
+      }
+    }
+
+    async function showColumns(table) {
+      const db = document.getElementById("database").value;
+
+      const colRes = await fetch(`/get_columns?db=${db}&table=${table}`);
+      const cols = await colRes.json();
+      document.getElementById("columns_list").innerHTML =
+        `<h4>📌 Columns in <b>${table}</b>:</h4><ul>` + cols.map(c => `<li>${c}</li>`).join("") + "</ul>";
+
+      const dataRes = await fetch(`/get_recent_records?db=${db}&table=${table}`);
+      const data = await dataRes.json();
+      const recentDiv = document.getElementById("recent_data");
+
+      if (data.length > 0) {
+        let headers = Object.keys(data[0]);
+        let html = "<h4>🕒 Recent Records:</h4><table><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
+        data.forEach(row => {
+          html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
+        });
+        html += "</table>";
+        recentDiv.innerHTML = html;
+      } else {
+        recentDiv.innerHTML = "<i>No recent records available.</i>";
+      }
+    }
+
+    async function runQuery() {
+      const db = document.getElementById("database").value;
+      const query = document.getElementById("nlp_query").value;
+      const formData = new FormData();
+      formData.append("database", db);
+      formData.append("query", query);
+
+      document.getElementById("query_result").innerText = "⏳ Running query...";
+      document.getElementById("generated_sql").innerText = "";
+
+      const res = await fetch("/run_query", { method: "POST", body: formData });
+      const result = await res.json();
+
+      document.getElementById("generated_sql").innerText = result.sql || "No SQL generated";
+      document.getElementById("query_result").innerText = result.result || "No result returned";
+    }
+
+    function resetPage() {
+      window.location.href = "/reset";
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>📊 NLP-to-SQL Dashboard</h1>
+    <p>Turn natural language into SQL and visualize results instantly</p>
+  </header>
+
+  <div class="container">
+    <div class="section">
+      <h2>🔗 Select Database</h2>
+      <select name="database" id="database" onchange="onDatabaseSelect()" required>
+        <option value="">-- Select --</option>
+        {% for db in databases %}
+        <option value="{{ db }}">{{ db }}</option>
+        {% endfor %}
+      </select>
+      <button id="showTablesBtn" onclick="showTables()" style="display:none;">Show Tables</button>
+      <div id="tables_list" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="section" id="uploadFormSection" style="display:none;">
+      <h2>📁 Upload CSV/XLSX</h2>
+      <form id="uploadForm" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" multiple accept=".csv,.xlsx">
+        <button type="button" onclick="uploadFiles()">Upload</button>
+        <div id="message" style="margin-top: 10px;"></div>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>📑 Table Info</h2>
+      <div id="columns_list"></div>
+      <div id="recent_data"></div>
+    </div>
+
+    <div class="section full-width">
+      <h2>🤖 Ask in Natural Language</h2>
+      <textarea id="nlp_query" rows="4" placeholder="e.g., List all products with price above 1000"></textarea>
+      <button onclick="runQuery()">Run NLP Query</button>
+    </div>
+
+    <div class="section">
+      <h3>📝 Generated SQL</h3>
+      <pre id="generated_sql"></pre>
+    </div>
+
+    <div class="section">
+      <h3>📈 Query Result</h3>
+      <pre id="query_result"></pre>
+    </div>
+
+    <div class="section full-width" style="text-align: center;">
+      <button onclick="resetPage()">🔄 Reset Dashboard</button>
+    </div>
+  </div>
+</body>
+</html>

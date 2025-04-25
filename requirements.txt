@@ -1,0 +1,8 @@
+flask
+pandas
+transformers
+torch
+sqlalchemy
+pyodbc
+openpyxl
+azure-storage-blob
