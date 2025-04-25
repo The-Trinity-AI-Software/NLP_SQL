@@ -1,0 +1,22 @@
+# 1. Upload CSV/XLSX Files
+curl -X POST http://localhost:5000/upload_files \
+  -F "database=CRM" \
+  -F "file=@/path/to/accounts.csv" \
+  -F "file=@/path/to/products.xlsx"
+
+# 2. Get Tables from a Database
+curl "http://localhost:5000/get_tables?db=CRM"
+
+# 3. Get Columns from a Specific Table
+curl "http://localhost:5000/get_columns?db=CRM&table=accounts"
+
+# 4. Get Recent Records from a Table
+curl "http://localhost:5000/get_recent_records?db=CRM&table=accounts"
+
+# 5. Run NLP-to-SQL Query
+curl -X POST http://localhost:5000/run_query \
+  -F "database=CRM" \
+  -F "query=List all accounts with revenue above 1 million"
+
+# 6. Reset the Dashboard
+curl http://localhost:5000/reset
